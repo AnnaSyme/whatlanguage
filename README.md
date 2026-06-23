@@ -6,3 +6,5 @@ what an unknown word looks like and it narrows down to the script, then the lang
 Single self-contained file: `index.html` (no build step, no dependencies).
 
 Live: https://annasyme.com/whatlanguage
+
+Built by Anna and Claude. Licensed under the MIT License — see [LICENSE](LICENSE).
