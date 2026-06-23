@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>What language is it?</title>
+<style>
+  :root{
+    --bg:#fafaf8; --card:#ffffff; --ink:#1d1f24;
+    --muted:#73767d; --line:#e6e6e2; --accent:#2563eb;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg);
+    color:var(--ink); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    min-height:100vh; display:flex; flex-direction:column; align-items:center; padding:36px 18px 56px;
+  }
+  .wrap{width:100%; max-width:660px}
+  header{text-align:center; margin-bottom:24px}
+  h1{font-size:22px; margin:0 0 6px; font-weight:700}
+  .card{background:transparent; border:none; border-radius:0; padding:0}
+  .q{font-size:22px; line-height:1.4; margin:0 0 18px; font-weight:600}
+  .opts{display:flex; flex-wrap:wrap; gap:12px; justify-content:center}
+  .opts.two{display:grid; grid-template-columns:1fr 1fr; gap:12px; max-width:486px; margin:0 auto}
+  .opts.two .opt{max-width:none}
+  .opts.three{max-width:560px; margin:0 auto}
+  .opts.three .opt{flex:0 0 calc(33.333% - 8px); max-width:none}
+  .opt{
+    cursor:pointer; flex:1 1 150px; max-width:230px; min-height:160px;
+    padding:14px 10px; border-radius:14px; border:1px solid var(--line);
+    color:var(--ink); background:var(--card); transition:.15s border-color,.15s background;
+    display:flex; flex-direction:column; align-items:center; text-align:center;
+  }
+  .opt:hover{border-color:var(--accent); background:#f3f6ff}
+  .opt .og{flex:1 1 auto; display:flex; align-items:center; justify-content:center; width:100%; font-size:30px; line-height:1.25; overflow:hidden; word-break:keep-all; text-align:center; text-wrap:balance; word-spacing:-1px}
+  .opt .og.solo{font-size:48px; word-break:normal; white-space:nowrap}
+  .opt .ot{flex:0 0 auto; display:block; line-height:1.3}
+  .opt .ol{font-size:11px; font-weight:400; color:var(--muted)}
+  .opt .oh{font-size:11px; color:var(--muted)}
+  .nav{display:flex; justify-content:space-between; align-items:center; margin-top:20px; gap:10px}
+  .ghost{cursor:pointer; background:transparent; border:none; color:var(--muted); font-weight:600; font-size:14px; padding:6px 4px}
+  .ghost:hover{color:var(--accent)}
+  /* result */
+  .r-head{display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:20px}
+  .r-name{font-size:28px; font-weight:800}
+  .r-where{font-size:14px; color:var(--muted)}
+  .r-words{font-size:20px; color:#2a9d8f; line-height:1.55; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden}
+  .alphabet{font-size:20px; line-height:1.5; word-spacing:-2px; color:#0e6e63; margin-top:18px}
+  .r-feat{font-size:15px; line-height:1.55; margin-top:18px; color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>What language is it?</h1>
+  </header>
+  <div id="app" class="card"></div>
+</div>
+
+<script>
+/* ---------- The key ----------
+   Question node: { q, ex:[{g,l}], options:[{ol, oh, og, go}] }
+     ol = label, oh = hint, og = sample glyph, go = next node id
+   Result node:   { result:{ name, langs[], tell, sample, confuse } }
+*/
+const K = {
+
+  /* ===== top level: the four groups you can already eyeball ===== */
+  start:{
+    q:"",
+    ex:[],
+    options:[
+      {ol:"Latin", oh:"English-style letters (a b c), maybe with accent marks", og:"Aa", go:"latin"},
+      {ol:"Chinese / Japanese / Korean", oh:"Dense square characters, or tidy syllable blocks", og:"漢", go:"cjk"},
+      {ol:"Cyrillic / Greek / Hebrew", oh:"Almost-Latin with odd extras, or right-to-left blocks", og:"Яπ", go:"cgh"},
+      {ol:"Something else", oh:"", og:"?", go:"others"}
+    ]
+  },
+
+  /* ===== CJK ===== */
+  cjk:{
+    q:"",
+    ex:[{g:"中文",l:"Chinese"},{g:"日本語",l:"Japanese"},{g:"한국어",l:"Korean"}],
+    options:[
+      {ol:"Chinese", oh:"Every character a dense, complex square — no simple letters mixed in", og:"漢字", go:"chinese"},
+      {ol:"Japanese", oh:"Complex kanji mixed with simpler kana — あ の カ", og:"です", go:"jp"},
+      {ol:"Korean", oh:"Square blocks of circles & lines — ㅇ ㅁ ㄱ ㅎ; the ○ is the tell", og:"한", go:"hangul"}
+    ]
+  },
+  chinese:{
+    q:"Simplified or traditional characters?",
+    letterTiles:true,
+    options:[
+      {ol:"Simplified", oh:"fewer strokes — mainland China", og:"国", go:"han_simp"},
+      {ol:"Traditional", oh:"fuller forms — Taiwan, Hong Kong", og:"國", go:"han_trad"}
+    ]
+  },
+  han_simp:{ result:{ name:"Chinese — Simplified", langs:["Mainland China, Singapore"], tell:"Streamlined characters with reduced strokes (国, 学, 龙), standard in mainland China and Singapore.", sample:"简体字" }},
+  han_trad:{ result:{ name:"Chinese — Traditional", langs:["Taiwan, Hong Kong, Macau"], tell:"Fuller, more intricate character forms (國, 學, 龍), kept in Taiwan, Hong Kong and Macau.", sample:"繁體字" }},
+  jp:{ result:{
+    name:"Japanese",
+    langs:["Japan"],
+    tell:"Mixes complex kanji (日本語) with simpler kana — curvy hiragana (あ の です) and angular katakana (カ ナ).",
+    sample:"日本語",
+    confuse:"If EVERY character is a dense complex block with no simple curvy letters, it's Chinese, not Japanese."
+  }},
+  hangul:{ result:{
+    name:"Hangul (Korean)",
+    langs:["North & South Korea"],
+    tell:"Clean, geometric syllable blocks built from circles, lines and right-angles. The little circle ㅇ is a dead giveaway.",
+    sample:"한국어",
+    confuse:""
+  }},
+
+  /* ===== Cyrillic / Greek / Hebrew ===== */
+  cgh:{
+    q:"",
+    letterTiles:true,
+    options:[
+      {ol:"Cyrillic", oh:"Latin-ish, but with a backwards R and N", og:"Я И Ж", go:"cyrillic"},
+      {ol:"Greek", oh:"Rounded letters — look for Δ (triangle) and Ω (horseshoe)", og:"Σ Δ Ω", go:"greek"},
+      {ol:"Hebrew", oh:"Separate square blocks, right-to-left", og:"א ש ל", go:"hebrew"}
+    ]
+  },
+  cyrillic:{
+    q:"Spot any of these special letters?",
+    letterTiles:true,
+    options:[
+      {ol:"Russian", oh:"ы, э, ё and hard sign ъ", og:"ы", go:"ru"},
+      {ol:"Ukrainian", oh:"і, ї, є, ґ — and no ы/э", og:"ї", go:"uk"},
+      {ol:"Bulgarian", oh:"Russian-like but no ы/э; ъ is a vowel", og:"ъ", go:"bg"},
+      {ol:"Serbian", oh:"ј, љ, њ, ђ, ћ, џ", og:"љ", go:"sr"},
+      {ol:"Kazakh", oh:"ә, ғ, қ, ң, ө, ұ, ү, һ, і", og:"ң", go:"kk"}
+    ]
+  },
+  ru:{ result:{ name:"Russian", langs:["Russia"], tell:"The biggest Cyrillic user. Has ы, э, ё and both the hard sign ъ and soft sign ь.", sample:"Русский" }},
+  uk:{ result:{ name:"Ukrainian", langs:["Ukraine"], tell:"Uses і, ї, є and ґ — and notably has no ы, э or ё.", sample:"Українська" }},
+  bg:{ result:{ name:"Bulgarian", langs:["Bulgaria"], tell:"Looks close to Russian but drops ы and э; the ъ works as a full vowel sound.", sample:"Български" }},
+  sr:{ result:{ name:"Serbian", langs:["Serbia, Montenegro, Bosnia"], tell:"Adds the distinctive ј, љ, њ, ђ, ћ and џ. (Serbian is also written in Latin.)", sample:"Српски" }},
+  kk:{ result:{ name:"Kazakh (Cyrillic)", langs:["Kazakhstan"], tell:"Russian base plus extra letters: ә, ғ, қ, ң, ө, ұ, ү, һ and і.", sample:"Қазақша" }},
+  greek:{ result:{
+    name:"Greek",
+    langs:["Greece, Cyprus"],
+    tell:"Full of letters borrowed by maths and science: Σ Δ Ω π λ φ θ Ψ. Familiar yet not quite Latin.",
+    sample:"Ελληνικά",
+    confuse:"Cyrillic is the other 'almost-Latin' script. Greek = maths symbols; Cyrillic = backwards R/N (Я И)."
+  }},
+  hebrew:{ result:{
+    name:"Hebrew",
+    langs:["Israel"],
+    tell:"Bold, separate, square-ish letters reading right-to-left on a level baseline. Many look like little boxes (ם ה ח ת).",
+    sample:"עברית",
+    confuse:"Arabic is the other right-to-left script, but its letters JOIN into a flowing line. Hebrew letters stay apart."
+  }},
+
+  /* ===== Latin ===== */
+  latin:{
+    q:"",
+    ex:[],
+    letterTiles:true,
+    options:[
+      {ol:"Spanish", oh:"ñ, plus inverted ¿ ¡", og:"ñ", go:"es"},
+      {ol:"French", oh:"œ ligature & many accents", og:"œ", go:"fr"},
+      {ol:"German", oh:"ß, plus ä ö ü", og:"ß", go:"de"},
+      {ol:"Portuguese", oh:"nasal ã õ", og:"ã õ", go:"pt"},
+      {ol:"Turkish", oh:"has BOTH dotless ı and dotted İ, plus ğ, ş", og:"ı İ ğ", go:"tr"},
+      {ol:"Polish", oh:"barred ł, ą ę, ż", og:"ł ą ę", go:"pl"},
+      {ol:"Czech / Slovak", oh:"háček č š ž; ř is Czech-only", og:"č š ž", go:"cs"},
+      {ol:"Romanian", oh:"comma-below ș ț, ă", og:"ș ț", go:"ro"},
+      {ol:"Hungarian", oh:"double-acute ő ű", og:"ő ű", go:"hu"},
+      {ol:"Danish / Norwegian", oh:"æ ø å", og:"ø æ å", go:"dano"},
+      {ol:"Swedish / Finnish", oh:"å ä ö, no ø/æ (those are Danish/Norwegian)", og:"å ä ö", go:"swfi"},
+      {ol:"Icelandic", oh:"þ thorn and ð eth", og:"þ ð", go:"is"},
+      {ol:"Vietnamese", oh:"stacked marks, plus đ", og:"đ ơ ư", go:"latin_viet"},
+      {ol:"None — plain a b c", oh:"no accent marks at all", og:"A", go:"latin_plain"}
+    ]
+  },
+  es:{ result:{ name:"Spanish", langs:["Spain, Latin America"], tell:"The tilde-n (ñ) is a strong signal — though it's also used in Galician, Basque and Filipino — along with single accents á é í ó ú and the upside-down ¿ ¡ that open questions and exclamations.", sample:"Español" }},
+  fr:{ result:{ name:"French", langs:["France, Belgium, Switzerland, Canada"], tell:"Lots of accents (à â é è ê ë î ï ô û), the cedilla ç, and the œ ligature (sœur, œuvre). No ñ, no ß.", sample:"Français" }},
+  de:{ result:{ name:"German", langs:["Germany, Austria, Switzerland"], tell:"The eszett ß is the German-only giveaway. It also uses the umlauts ä ö ü — though those are shared with languages like Swedish, Turkish and Hungarian — and Capitalises all nouns mid-sentence.", sample:"Deutsch" }},
+  pt:{ result:{ name:"Portuguese", langs:["Portugal, Brazil"], tell:"Nasal tildes on ã and õ (são, coração), plus the cedilla ç and circumflex â ê ô.", sample:"Português" }},
+  tr:{ result:{ name:"Turkish", langs:["Turkey, Cyprus"], tell:"The dotless ı paired with dotted İ, soft-g ğ, ş, ç and ö ü. The dotless ı (also used in Azerbaijani) is the strongest clue.", sample:"Türkçe" }},
+  pl:{ result:{ name:"Polish", langs:["Poland"], tell:"Barred Ł, ż and ź with dots, the nasal hooks ą ę (ogonek), plus ś ć ń ó.", sample:"Polski" }},
+  cs:{ result:{ name:"Czech / Slovak", langs:["Czechia, Slovakia"], tell:"The háček (caron) on č š ž is the shared Czech/Slovak hallmark. Czech adds ř and the ring ů; Slovak instead uses ľ, ô, ŕ, ĺ and ä.", sample:"Čeština" }},
+  ro:{ result:{ name:"Romanian", langs:["Romania, Moldova"], tell:"Comma-below ș and ț, plus ă and â/î. The comma underneath (not a cedilla) is the tell.", sample:"Română" }},
+  hu:{ result:{ name:"Hungarian", langs:["Hungary"], tell:"Double-acute ő and ű (long umlaut vowels) alongside á é í ó ö ú ü.", sample:"Magyar" }},
+  dano:{ result:{ name:"Danish / Norwegian", langs:["Denmark, Norway"], tell:"Both use æ, ø and å — not the ä/ö that Swedish uses — and look near-identical to each other, so telling the two apart usually comes down to specific words and spellings.", sample:"Dansk · Norsk" }},
+  swfi:{ result:{ name:"Swedish / Finnish", langs:["Sweden, Finland"], tell:"Both use å, ä and ö — not the ø and æ that Danish and Norwegian use. Swedish has the 'sj'/'sk' spelling of the sh-sound (sjö = 'lake'); Finnish is full of long double vowels and consonants (ää, kk, tt — as in 'kahvi').", sample:"Svenska · Suomi" }},
+  is:{ result:{ name:"Icelandic", langs:["Iceland"], tell:"The thorn þ and eth ð are unmistakable, plus æ, ö and accented vowels á é í ó ú ý.", sample:"Íslenska" }},
+  latin_viet:{ result:{ name:"Vietnamese", langs:["Vietnam"], tell:"The Latin alphabet loaded with stacked diacritics — vowels often carry two marks at once (ề ộ ậ ớ) — plus the barred đ.", sample:"Tiếng Việt" }},
+  latin_plain:{ result:{ name:"Latin script (no accents)", langs:["Used worldwide"], tell:"The plain 26-letter alphabet with no accent marks at all, so the script alone can't pin down the language. Besides English, many languages use it accent-free — Indonesian, Malay, Swahili, Somali, Zulu and Latin itself.", sample:"Abc" }},
+
+  /* ===== OTHERS — the real branching ===== */
+  others:{
+    q:"",
+    ex:[{g:"العربية",l:"joined"},{g:"देवनागरी",l:"top bar"},{g:"తెలుగు",l:"round"},{g:"ሰላም",l:"legs"}],
+    options:[
+      {ol:"Letters join into a flowing cursive line", oh:"Right-to-left, with clusters of dots above/below", og:"ع", go:"rtl"},
+      {ol:"A horizontal line runs along the top", oh:"Letters hang from it like clothes on a line", og:"दे", go:"topbar"},
+      {ol:"Rounded, loopy, curly shapes", oh:"Circles, coils, ticks — no top bar", og:"తె", go:"round"},
+      {ol:"Small blocky figures standing on 'legs'", oh:"Angular syllables in a tidy grid", og:"ሰ", go:"ethiopic"},
+      {ol:"Written vertically, top to bottom", oh:"A wavy spine running down the column", og:"ᠮ", go:"mongolian"}
+    ]
+  },
+
+  mongolian:{ result:{
+    name:"Mongolian (traditional script)",
+    langs:["Mongolian (Mongolia & Inner Mongolia)"],
+    tell:"Written in vertical columns running top-to-bottom, left-to-right, with letters hanging off a continuous wavy vertical spine.",
+    sample:"ᠮᠣᠩᠭᠣᠯ",
+    confuse:""
+  }},
+
+  rtl:{
+    q:"Are the letters actually joined together, or separate?",
+    ex:[{g:"العربية",l:"joined"},{g:"ދިވެހި",l:"separate"}],
+    options:[
+      {ol:"Joined into one flowing line", oh:"True cursive, letters connect", og:"ع", go:"arabic"},
+      {ol:"Separate, with curls, loops & marks", oh:"Looks like ornate shorthand", og:"ޱ", go:"thaana"}
+    ]
+  },
+  thaana:{ result:{
+    name:"Thaana (Dhivehi)",
+    langs:["Maldives"],
+    tell:"Right-to-left like Arabic, but the letters don't join — curvy, hook-like forms (some derived from Arabic numerals) with vowel marks attached.",
+    sample:"ދިވެހި",
+    confuse:"Arabic is the joined-up RTL script; Thaana keeps its letters separate. Both sit on the right-to-left side."
+  }},
+  arabic:{
+    q:"Any of these extra letters present?",
+    letterTiles:true,
+    options:[
+      {ol:"Arabic", oh:"none of the extras below", og:"ع", go:"ar"},
+      {ol:"Persian (Farsi)", oh:"adds پ چ گ ژ", og:"گ", go:"fa"},
+      {ol:"Urdu", oh:"ٹ ڈ ڑ ے, sweeping Nastaliq style", og:"ے", go:"ur"},
+      {ol:"Pashto", oh:"ښ ږ ړ ڼ ټ", og:"ښ", go:"ps"}
+    ]
+  },
+  ar:{ result:{ name:"Arabic", langs:["Arab world, North Africa"], tell:"The base 28-letter Arabic abjad, joined cursively right-to-left, with none of the Perso-Arabic additions.", sample:"العربية" }},
+  fa:{ result:{ name:"Persian (Farsi)", langs:["Iran, Afghanistan (Dari), Tajikistan"], tell:"Arabic script plus four added letters for sounds Arabic lacks: پ (p), چ (ch), گ (g), ژ (zh).", sample:"فارسی" }},
+  ur:{ result:{ name:"Urdu", langs:["Pakistan, India"], tell:"Perso-Arabic script, usually in the flowing Nastaliq style, with retroflex ٹ ڈ ڑ and the ے at word ends.", sample:"اردو" }},
+  ps:{ result:{ name:"Pashto", langs:["Afghanistan, Pakistan"], tell:"Arabic-based with its own retroflex and extra letters: ښ ږ ړ ڼ ټ ځ څ.", sample:"پښتو" }},
+
+  topbar:{
+    q:"Under that top line, the letters are mostly…",
+    ex:[{g:"देवनागरी",l:"angular"},{g:"বাংলা",l:"rounded"},{g:"ਪੰਜਾਬੀ",l:"looped"}],
+    options:[
+      {ol:"Straight, upright & angular (boxy)", oh:"क ख ग म भ", og:"क", go:"devanagari"},
+      {ol:"Rounded and curvy", oh:"Soft loops with sharp little bends", og:"বা", go:"bengali"},
+      {ol:"Open loops and hooks", oh:"Softer, with characteristic open curls", og:"ਪੰ", go:"gurmukhi"},
+      {ol:"Stacked in layers, with dots between syllables", oh:"Consonants stack within syllables; ་ dots separate them", og:"བོ", go:"tibetan"}
+    ]
+  },
+  tibetan:{ result:{
+    name:"Tibetan",
+    langs:["Tibet, Bhutan, Nepal, N. India"],
+    tell:"Each letter hangs from a top stroke and reads left-to-right; consonants can stack into clusters within a syllable, with a small floating dot (་) separating syllables.",
+    sample:"བོད་སྐད",
+    confuse:"Shares the headline idea with Devanagari, but Tibetan stacks letters into towers and uses the dot separators — Devanagari stays on one line."
+  }},
+  devanagari:{ result:{
+    name:"Devanagari",
+    langs:["India, Nepal"],
+    tell:"Continuous top headline plus angular, upright letterforms — the most widespread top-bar script. Most often it's Hindi, but Marathi, Nepali and Sanskrit use it too.",
+    sample:"नमस्ते",
+    confuse:"Bengali and Gurmukhi also use a headline. Devanagari is the angular, 'boxy' one; Bengali is rounder; Gurmukhi more open-looped."
+  }},
+  bengali:{
+    q:"",
+    letterTiles:true,
+    options:[
+      {ol:"Bengali", oh:"uses র for the 'r' sound", og:"র", go:"bengali_lang"},
+      {ol:"Assamese", oh:"uses ৰ and ৱ instead", og:"ৰ", go:"assamese"}
+    ]
+  },
+  bengali_lang:{ result:{ name:"Bengali", langs:["Bangladesh, West Bengal (India)"], tell:"Rounded top-bar script; uses র for the 'r' sound.", sample:"বাংলা" }},
+  assamese:{ result:{ name:"Assamese", langs:["Assam (India)"], tell:"The same script as Bengali, but with the distinct letters ৰ (ro) and ৱ (wo).", sample:"অসমীয়া" }},
+  gurmukhi:{ result:{
+    name:"Gurmukhi",
+    langs:["India (Punjab), Pakistan"],
+    tell:"Top headline like Devanagari, but with rounder, open-looped letters (ਸ ਹ ਣ).",
+    sample:"ਪੰਜਾਬੀ",
+    confuse:"Closest to Devanagari but softer and more looped. If it's very rounded with the bar, reconsider Bengali."
+  }},
+
+  round:{
+    q:"",
+    ex:[{g:"ไทย",l:"spiky tops"},{g:"မြန်မာ",l:"circles"},{g:"తెలుగు",l:"ticks"},{g:"ქართული",l:"flowing"}],
+    letterTiles:true,
+    options:[
+      {ol:"Tall spikes rise above the line", oh:"", og:"ป ฝ ฟ", go:"se_asia"},
+      {ol:"Made almost entirely of circles", oh:"", og:"ဝ ဘ ၀", go:"burmese"},
+      {ol:"Bubbly, with little ticks on top", oh:"", og:"క చ ట", go:"south"},
+      {ol:"Flowing graceful loops, no capitals", oh:"", og:"ქ ჯ ჰ", go:"caucasus"},
+      {ol:"Like Devanagari but without the top bar", oh:"", og:"ગ ભ ષ", go:"gujarati"}
+    ]
+  },
+  se_asia:{
+    q:"",
+    ex:[{g:"ภาษาไทย",l:"Thai"},{g:"ພາສາລາວ",l:"Lao"},{g:"ខ្មែរ",l:"Khmer"}],
+    options:[
+      {ol:"Busy, crisp, lots of tall spikes", oh:"Many varied letters, sharp little loops", og:"ไทย", go:"thai"},
+      {ol:"Softer, rounder, fewer shapes", oh:"Gentler curves, simpler letters", og:"ລາວ", go:"lao"},
+      {ol:"Tall, ornate & pointed, with stacked feet", oh:"Elaborate, 'temple-carving' look", og:"ខ", go:"khmer"}
+    ]
+  },
+  khmer:{ result:{
+    name:"Khmer",
+    langs:["Cambodia"],
+    tell:"Tall, ornate and pointed, with elaborate curls and sub-letters stacked beneath the main line. Looks decorative and dense.",
+    sample:"ភាសាខ្មែរ",
+    confuse:"Thai and Lao are the neighbours, but they're lighter and spikier on top; Khmer is taller, busier and more ornate, with stacked feet."
+  }},
+  gujarati:{ result:{
+    name:"Gujarati",
+    langs:["India (Gujarat)"],
+    tell:"Looks like Devanagari with the top headline removed — the same angular letters, but floating free without the connecting bar.",
+    sample:"ગુજરાતી",
+    confuse:"Mistaken for Devanagari most often — just check for the missing top line. Gujarati has none; Devanagari, Bengali and Gurmukhi all do."
+  }},
+  thai:{ result:{
+    name:"Thai",
+    langs:["Thailand"],
+    tell:"Consonants often start with a small loop, with tall spikes and vowel/tone marks stacked above and below. Busy and crisp.",
+    sample:"ภาษาไทย",
+    confuse:"Lao is the close cousin — softer, rounder, with fewer letters. Thai looks busier and spikier."
+  }},
+  lao:{ result:{
+    name:"Lao",
+    langs:["Laos"],
+    tell:"Like Thai but rounder and simpler, with fewer distinct shapes — gentler curves, fewer sharp spikes.",
+    sample:"ພາສາລາວ",
+    confuse:"Very close to Thai. If it looks busier and spikier with more varied letters, it's Thai."
+  }},
+  burmese:{ result:{
+    name:"Burmese (Myanmar)",
+    langs:["Myanmar"],
+    tell:"Built from circles — rows of round and partial-circle shapes. Looks 'bubbly' in a very regular way.",
+    sample:"မြန်မာ",
+    confuse:"Khmer is also Southeast Asian and ornate, but tall and pointed rather than circular. Burmese is the round, 'all circles' one."
+  }},
+  south:{
+    q:"",
+    ex:[{g:"తెలుగు",l:"Telugu"},{g:"தமிழ்",l:"Tamil"},{g:"മലയാളം",l:"Malayalam"},{g:"ଓଡ଼ିଆ",l:"Odia"}],
+    options:[
+      {ol:"Bubbly & rounded with v-shaped ticks on top", oh:"Telugu and Kannada look near-identical", og:"తె", go:"telugu_kannada"},
+      {ol:"Open & simple, hooks like '6' and 'L'", oh:"Fewer stacked clusters", og:"தமிழ்", go:"tamil"},
+      {ol:"Very round & ornate — coils and springs", oh:"Densely curled", og:"മ", go:"malsin"},
+      {ol:"Round letters under curved 'umbrella' tops", oh:"Each letter capped by a smooth curve", og:"ଓ", go:"odia"}
+    ]
+  },
+  telugu_kannada:{
+    q:"Look at the marks on top. Closer to which?",
+    ex:[{g:"తెలుగు",l:"Telugu"},{g:"ಕನ್ನಡ",l:"Kannada"}],
+    options:[
+      {ol:"Letters capped with a clear tick / check-mark on top", oh:"Rounder, softer, bubblier", og:"తె", go:"telugu"},
+      {ol:"A flatter top with a small loop/horn — no tick", oh:"A touch more angular and squarer", og:"ಕ", go:"kannada"},
+      {ol:"Honestly can't tell", oh:"They really are near-twins", og:"≈", go:"telugu_kannada_both"}
+    ]
+  },
+  telugu:{ result:{
+    name:"Telugu",
+    langs:["India (Andhra Pradesh, Telangana)"],
+    tell:"Plump, rounded letters, many capped with a small tick or check-mark (the talakaṭṭu). Softer and bubblier than its sister Kannada.",
+    sample:"తెలుగు",
+    confuse:"Kannada is the near-twin — Kannada runs slightly more angular with a small loop/horn on the top-right; Telugu is rounder."
+  }},
+  kannada:{ result:{
+    name:"Kannada",
+    langs:["India (Karnataka)"],
+    tell:"Rounded South-Indian letters, but a shade more angular than Telugu, often with a small loop or horn at the top-right of letters.",
+    sample:"ಕನ್ನಡ",
+    confuse:"Telugu is the near-twin and genuinely hard to separate; Telugu is rounder with a clearer tick on top, Kannada slightly squarer."
+  }},
+  telugu_kannada_both:{ result:{
+    name:"Telugu or Kannada",
+    langs:["South India"],
+    tell:"Two sister scripts of South India — plump rounded letters capped with ticks. They're famously hard to tell apart at a glance.",
+    sample:"తెలుగు · ಕನ್ನಡ",
+    confuse:"Rule of thumb: Telugu is rounder with a clear check-mark on top; Kannada is slightly more angular with a top-right loop."
+  }},
+  odia:{ result:{
+    name:"Odia (Oriya)",
+    langs:["India (Odisha)"],
+    tell:"Each letter sits under a smooth curved top — rows of rounded 'umbrella' or comb-like shapes. Very round and uniform.",
+    sample:"ଓଡ଼ିଆ",
+    confuse:"Other rounded South-Indian scripts are curly too, but Odia's signature is the curved arc capping nearly every letter."
+  }},
+  tamil:{ result:{
+    name:"Tamil",
+    langs:["India (Tamil Nadu), Sri Lanka"],
+    tell:"Distinctive simple, open shapes — fewer stacked clusters than other Indian scripts, with characteristic loops and right-angle hooks.",
+    sample:"தமிழ்",
+    confuse:"Cleaner and more 'open' than Telugu/Kannada/Malayalam, which pack more curls and conjunct clusters together."
+  }},
+  malsin:{
+    q:"",
+    ex:[{g:"മലയാളം",l:"Malayalam"},{g:"සිංහල",l:"Sinhala"}],
+    options:[
+      {ol:"Loops with slightly sharper joins", oh:"South-Indian, very curly", og:"മ", go:"malayalam"},
+      {ol:"Springy, even, spring-like coils", oh:"Sri Lankan", og:"සි", go:"sinhala"}
+    ]
+  },
+  malayalam:{ result:{
+    name:"Malayalam",
+    langs:["India (Kerala)"],
+    tell:"Highly rounded and curly, with elaborate looped letters and lots of circular flourishes — a very 'coiled' look.",
+    sample:"മലയാളം",
+    confuse:"Sinhala is also very round; Malayalam's loops are slightly sharper at the joins, Sinhala's springier and more uniform."
+  }},
+  sinhala:{ result:{
+    name:"Sinhala",
+    langs:["Sri Lanka"],
+    tell:"Extremely round and ornate — rows of springs, coils and double curves. Among the curliest scripts in the world.",
+    sample:"සිංහල",
+    confuse:"Malayalam is the closest look-alike. Sinhala is springier and more evenly curved; Malayalam has slightly sharper joins."
+  }},
+  caucasus:{
+    q:"Smoother & loopier, or more hooked & spiky?",
+    ex:[{g:"ქართული",l:"Georgian"},{g:"Հայերեն",l:"Armenian"}],
+    options:[
+      {ol:"Smooth, even, graceful loops", oh:"No caps, flowing arcs", og:"ქ", go:"georgian"},
+      {ol:"Rounded but with hooks & little feet", oh:"Slightly angular, Latin/Greek-ish", og:"Հ", go:"armenian"}
+    ]
+  },
+  georgian:{ result:{
+    name:"Georgian (Mkhedruli)",
+    langs:["Georgia"],
+    tell:"Rounded, even-height letters with no upper/lower case — graceful arcs and loops, like flowing cursive.",
+    sample:"ქართული",
+    confuse:"Armenian is the other Caucasus script — also rounded but more angular and 'hooked', with little feet."
+  }},
+  armenian:{ result:{
+    name:"Armenian",
+    langs:["Armenia"],
+    tell:"Rounded letters with characteristic small hooks, feet and open bowls — vaguely Latin/Greek-ish but its own system.",
+    sample:"Հայերեն",
+    confuse:"Georgian is the look-alike neighbour — Georgian is smoother and loopier, Armenian a little more angular and hooked."
+  }},
+
+  ethiopic:{ result:{
+    name:"Ge'ez / Ethiopic",
+    langs:["Ethiopia, Eritrea"],
+    tell:"Each syllable is a compact, angular little figure, often standing on small legs or feet, arranged in neat rows.",
+    sample:"አማርኛ",
+    confuse:""
+  }}
+};
+
+/* ---------- alphabets shown on result pages ---------- */
+const ALPHA = {
+  han_simp:{label:"Common characters — simplified", g:"人 大 小 国 学 时 间 这 说 你 我 他 来 去 爱 龙 马 鸟 车 门 见 写 听 读 书 语 译 汉"},
+  han_trad:{label:"Common characters — traditional", g:"人 大 小 國 學 時 間 這 說 你 我 他 來 去 愛 龍 馬 鳥 車 門 見 寫 聽 讀 書 語 譯 漢"},
+  jp:{label:"Hiragana", g:"あ い う え お か き く け こ さ し す せ そ た ち つ て と な に ぬ ね の は ひ ふ へ ほ ま み む め も や ゆ よ ら り る れ ろ わ を ん"},
+  hangul:{label:"Letters (jamo)", g:"ㄱ ㄴ ㄷ ㄹ ㅁ ㅂ ㅅ ㅇ ㅈ ㅊ ㅋ ㅌ ㅍ ㅎ ㅏ ㅑ ㅓ ㅕ ㅗ ㅛ ㅜ ㅠ ㅡ ㅣ"},
+  ru:{label:"Russian — upper & lower", g:"Аа Бб Вв Гг Дд Ее Ёё Жж Зз Ии Йй Кк Лл Мм Нн Оо Пп Рр Сс Тт Уу Фф Хх Цц Чч Шш Щщ Ъъ Ыы Ьь Ээ Юю Яя"},
+  uk:{label:"Ukrainian — upper & lower", g:"Аа Бб Вв Гг Ґґ Дд Ее Єє Жж Зз Ии Іі Її Йй Кк Лл Мм Нн Оо Пп Рр Сс Тт Уу Фф Хх Цц Чч Шш Щщ Ьь Юю Яя"},
+  bg:{label:"Bulgarian — upper & lower", g:"Аа Бб Вв Гг Дд Ее Жж Зз Ии Йй Кк Лл Мм Нн Оо Пп Рр Сс Тт Уу Фф Хх Цц Чч Шш Щщ Ъъ Ьь Юю Яя"},
+  sr:{label:"Serbian — upper & lower", g:"Аа Бб Вв Гг Дд Ђђ Ее Жж Зз Ии Јј Кк Лл Љљ Мм Нн Њњ Оо Пп Рр Сс Тт Ћћ Уу Фф Хх Цц Чч Џџ Шш"},
+  kk:{label:"Kazakh — upper & lower", g:"Аа Әә Бб Вв Гг Ғғ Дд Ее Жж Зз Ии Йй Кк Ққ Лл Мм Нн Ңң Оо Өө Пп Рр Сс Тт Уу Ұұ Үү Фф Хх Һһ Цц Чч Шш Ыы Іі"},
+  greek:{label:"Greek — upper & lower", g:"Αα Ββ Γγ Δδ Εε Ζζ Ηη Θθ Ιι Κκ Λλ Μμ Νν Ξξ Οο Ππ Ρρ Σσς Ττ Υυ Φφ Χχ Ψψ Ωω"},
+  hebrew:{label:"Hebrew alphabet", g:"א ב ג ד ה ו ז ח ט י כ ל מ נ ס ע פ צ ק ר ש ת"},
+  es:{label:"Spanish — upper & lower", g:"Aa Bb Cc Dd Ee Ff Gg Hh Ii Jj Kk Ll Mm Nn Ññ Oo Pp Qq Rr Ss Tt Uu Vv Ww Xx Yy Zz"},
+  fr:{label:"French — upper, lower & accents", g:"Aa Bb Cc Dd Ee Ff Gg Hh Ii Jj Kk Ll Mm Nn Oo Pp Qq Rr Ss Tt Uu Vv Ww Xx Yy Zz · Àà Ââ Çç Éé Èè Êê Ëë Îî Ïï Ôô Ûû Ùù Üü Œœ"},
+  de:{label:"German — upper & lower", g:"Aa Bb Cc Dd Ee Ff Gg Hh Ii Jj Kk Ll Mm Nn Oo Pp Qq Rr Ss Tt Uu Vv Ww Xx Yy Zz · Ää Öö Üü ß"},
+  pt:{label:"Portuguese — upper, lower & accents", g:"Aa Bb Cc Dd Ee Ff Gg Hh Ii Jj Kk Ll Mm Nn Oo Pp Qq Rr Ss Tt Uu Vv Ww Xx Yy Zz · Áá Ââ Ãã Àà Çç Éé Êê Íí Óó Ôô Õõ Úú"},
+  tr:{label:"Turkish — upper & lower", g:"Aa Bb Cc Çç Dd Ee Ff Gg Ğğ Hh  I ı  İ i  Jj Kk Ll Mm Nn Oo Öö Pp Rr Ss Şş Tt Uu Üü Vv Yy Zz"},
+  pl:{label:"Polish — upper & lower", g:"Aa Ąą Bb Cc Ćć Dd Ee Ęę Ff Gg Hh Ii Jj Kk Ll Łł Mm Nn Ńń Oo Óó Pp Rr Ss Śś Tt Uu Ww Yy Zz Źź Żż"},
+  cs:{label:"Czech — upper & lower", g:"Aa Áá Bb Cc Čč Dd Ďď Ee Éé Ěě Ff Gg Hh Ii Íí Jj Kk Ll Mm Nn Ňň Oo Óó Pp Rr Řř Ss Šš Tt Ťť Uu Úú Ůů Vv Yy Ýý Zz Žž"},
+  ro:{label:"Romanian — upper & lower", g:"Aa Ăă Ââ Bb Cc Dd Ee Ff Gg Hh Ii Îî Jj Kk Ll Mm Nn Oo Pp Rr Ss Șș Tt Țț Uu Vv Xx Zz"},
+  hu:{label:"Hungarian — upper & lower", g:"Aa Áá Bb Cc Dd Ee Éé Ff Gg Hh Ii Íí Jj Kk Ll Mm Nn Oo Óó Öö Őő Pp Rr Ss Tt Uu Úú Üü Űű Vv Zz"},
+  dano:{label:"Danish / Norwegian — upper & lower", g:"Aa Bb Cc Dd Ee Ff Gg Hh Ii Jj Kk Ll Mm Nn Oo Pp Qq Rr Ss Tt Uu Vv Ww Xx Yy Zz Ææ Øø Åå"},
+  swfi:{label:"Swedish / Finnish — upper & lower", g:"Aa Bb Cc Dd Ee Ff Gg Hh Ii Jj Kk Ll Mm Nn Oo Pp Qq Rr Ss Tt Uu Vv Ww Xx Yy Zz Åå Ää Öö"},
+  is:{label:"Icelandic — upper & lower", g:"Aa Áá Bb Dd Ðð Ee Éé Ff Gg Hh Ii Íí Jj Kk Ll Mm Nn Oo Óó Pp Rr Ss Tt Uu Úú Vv Xx Yy Ýý Þþ Ææ Öö"},
+  latin_viet:{label:"Vietnamese — upper & lower", g:"Aa Ăă Ââ Bb Cc Dd Đđ Ee Êê Gg Hh Ii Kk Ll Mm Nn Oo Ôô Ơơ Pp Qq Rr Ss Tt Uu Ưư Vv Xx Yy"},
+  latin_plain:{label:"Latin — upper & lower", g:"Aa Bb Cc Dd Ee Ff Gg Hh Ii Jj Kk Ll Mm Nn Oo Pp Qq Rr Ss Tt Uu Vv Ww Xx Yy Zz"},
+  ar:{label:"Arabic letters", g:"ا ب ت ث ج ح خ د ذ ر ز س ش ص ض ط ظ ع غ ف ق ك ل م ن ه و ي"},
+  fa:{label:"Persian letters", g:"ا ب پ ت ث ج چ ح خ د ذ ر ز ژ س ش ص ض ط ظ ع غ ف ق ک گ ل م ن و ه ی"},
+  ur:{label:"Urdu letters", g:"ا ب پ ت ٹ ث ج چ ح خ د ڈ ذ ر ڑ ز ژ س ش ص ض ط ظ ع غ ف ق ک گ ل م ن و ہ ھ ی ے"},
+  ps:{label:"Pashto letters", g:"ا ب پ ت ټ ث ج ځ چ څ ح خ د ډ ذ ر ړ ز ژ ږ س ش ښ ص ض ط ظ ع غ ف ق ک ګ ل م ن ڼ و ه ی ې"},
+  thaana:{label:"Thaana letters", g:"ހ ށ ނ ރ ބ ޅ ކ އ ވ މ ފ ދ ތ ލ ގ ޏ ސ ޑ ޒ ޓ ޔ ޕ ޖ ޗ"},
+  devanagari:{label:"Devanagari letters", g:"अ आ इ ई उ ऊ ए ऐ ओ औ क ख ग घ ङ च छ ज झ ञ ट ठ ड ढ ण त थ द ध न प फ ब भ म य र ल व श ष स ह"},
+  bengali_lang:{label:"Bengali letters", g:"অ আ ই ঈ উ ঊ এ ঐ ও ঔ ক খ গ ঘ ঙ চ ছ জ ঝ ঞ ট ঠ ড ঢ ণ ত থ দ ধ ন প ফ ব ভ ম য র ল শ ষ স হ"},
+  assamese:{label:"Assamese letters", g:"অ আ ই ঈ উ ঊ এ ঐ ও ঔ ক খ গ ঘ ঙ চ ছ জ ঝ ঞ ট ঠ ড ঢ ণ ত থ দ ধ ন প ফ ব ভ ম য ৰ ল ৱ শ ষ স হ"},
+  gurmukhi:{label:"Gurmukhi letters", g:"ੳ ਅ ੲ ਸ ਹ ਕ ਖ ਗ ਘ ਙ ਚ ਛ ਜ ਝ ਞ ਟ ਠ ਡ ਢ ਣ ਤ ਥ ਦ ਧ ਨ ਪ ਫ ਬ ਭ ਮ ਯ ਰ ਲ ਵ ੜ"},
+  tibetan:{label:"Tibetan consonants", g:"ཀ ཁ ག ང ཅ ཆ ཇ ཉ ཏ ཐ ད ན པ ཕ བ མ ཙ ཚ ཛ ཝ ཞ ཟ འ ཡ ར ལ ཤ ས ཧ ཨ"},
+  gujarati:{label:"Gujarati letters", g:"અ આ ઇ ઈ ઉ ઊ એ ઐ ઓ ઔ ક ખ ગ ઘ ઙ ચ છ જ ઝ ઞ ટ ઠ ડ ઢ ણ ત થ દ ધ ન પ ફ બ ભ મ ય ર લ વ શ ષ સ હ"},
+  thai:{label:"Thai consonants", g:"ก ข ฃ ค ฅ ฆ ง จ ฉ ช ซ ฌ ญ ฎ ฏ ฐ ฑ ฒ ณ ด ต ถ ท ธ น บ ป ผ ฝ พ ฟ ภ ม ย ร ล ว ศ ษ ส ห ฬ อ ฮ"},
+  lao:{label:"Lao consonants", g:"ກ ຂ ຄ ງ ຈ ສ ຊ ຍ ດ ຕ ຖ ທ ນ ບ ປ ຜ ຝ ພ ຟ ມ ຣ ລ ວ ຫ ອ ຮ"},
+  khmer:{label:"Khmer consonants", g:"ក ខ គ ឃ ង ច ឆ ជ ឈ ញ ដ ឋ ឌ ឍ ណ ត ថ ទ ធ ន ប ផ ព ភ ម យ រ ល វ ស ហ ឡ អ"},
+  burmese:{label:"Burmese consonants", g:"က ခ ဂ ဃ င စ ဆ ဇ ဈ ည ဋ ဌ ဍ ဎ ဏ တ ထ ဒ ဓ န ပ ဖ ဗ ဘ မ ယ ရ လ ဝ သ ဟ ဠ အ"},
+  telugu:{label:"Telugu letters", g:"అ ఆ ఇ ఈ ఉ ఊ ఎ ఏ ఐ ఒ ఓ ఔ క ఖ గ ఘ చ ఛ జ ఝ ట ఠ డ ఢ ణ త థ ద ధ న ప ఫ బ భ మ య ర ల వ శ ష స హ"},
+  kannada:{label:"Kannada letters", g:"ಅ ಆ ಇ ಈ ಉ ಊ ಎ ಏ ಐ ಒ ಓ ಔ ಕ ಖ ಗ ಘ ಚ ಛ ಜ ಝ ಟ ಠ ಡ ಢ ಣ ತ ಥ ದ ಧ ನ ಪ ಫ ಬ ಭ ಮ ಯ ರ ಲ ವ ಶ ಷ ಸ ಹ"},
+  telugu_kannada_both:{label:"Telugu letters (Kannada is the sister script)", g:"అ ఆ ఇ ఈ ఉ ఊ ఎ ఏ క ఖ గ ఘ చ జ ట డ త థ ద ధ న ప బ భ మ య ర ల వ స హ"},
+  tamil:{label:"Tamil letters", g:"அ ஆ இ ஈ உ ஊ எ ஏ ஐ ஒ ஓ க ங ச ஞ ட ண த ந ப ம ய ர ல வ ழ ள ற ன"},
+  malayalam:{label:"Malayalam letters", g:"അ ആ ഇ ഈ ഉ ഊ എ ഏ ഐ ഒ ഓ ക ഖ ഗ ഘ ങ ച ഛ ജ ഝ ഞ ട ഠ ഡ ഢ ണ ത ഥ ദ ധ ന പ ഫ ബ ഭ മ യ ര ല വ ശ ഷ സ ഹ"},
+  sinhala:{label:"Sinhala letters", g:"අ ආ ඇ ඈ ඉ ඊ උ ඌ එ ඒ ක ඛ ග ඝ ඞ ච ඡ ජ ඣ ට ඨ ඩ ඪ ණ ත ථ ද ධ න ප ඵ බ භ ම ය ර ල ව ශ ෂ ස හ"},
+  odia:{label:"Odia letters", g:"ଅ ଆ ଇ ଈ ଉ ଊ ଏ ଐ ଓ କ ଖ ଗ ଘ ଙ ଚ ଛ ଜ ଝ ଞ ଟ ଠ ଡ ଢ ଣ ତ ଥ ଦ ଧ ନ ପ ଫ ବ ଭ ମ ଯ ର ଲ ଵ ଶ ଷ ସ ହ"},
+  georgian:{label:"Georgian alphabet", g:"ა ბ გ დ ე ვ ზ თ ი კ ლ მ ნ ო პ ჟ რ ს ტ უ ფ ქ ღ ყ შ ჩ ც ძ წ ჭ ხ ჯ ჰ"},
+  armenian:{label:"Armenian — upper & lower", g:"Աա Բբ Գգ Դդ Եե Զզ Էէ Ըը Թթ Ժժ Իի Լլ Խխ Ծծ Կկ Հհ Ձձ Ղղ Ճճ Մմ Յյ Նն Շշ Ոո Չչ Պպ Ջջ Ռռ Սս Վվ Տտ Րր Ցց Ււ Փփ Քք Օօ Ֆֆ"},
+  ethiopic:{label:"Ge'ez base characters", g:"ሀ ለ ሐ መ ሠ ረ ሰ ሸ ቀ በ ተ ቸ ኀ ነ ኘ አ ከ ኸ ወ ዐ ዘ ዠ የ ደ ጀ ገ ጠ ጨ ጰ ጸ ፀ ፈ ፐ"},
+  mongolian:{label:"Mongolian letters", g:"ᠠ ᠡ ᠢ ᠣ ᠤ ᠥ ᠦ ᠨ ᠪ ᠫ ᠬ ᠭ ᠮ ᠯ ᠰ ᠱ ᠲ ᠳ ᠴ ᠵ ᠶ ᠷ ᠸ ᠹ ᠺ"}
+};
+
+/* a few example words for each result page */
+const WORDS = {
+  han_simp:"你好 · 谢谢 · 水 · 是 · 朋友 · 爱 · 山 · 书",
+  han_trad:"你好 · 謝謝 · 水 · 是 · 朋友 · 愛 · 山 · 書",
+  jp:"こんにちは · ありがとう · 水 · はい · いいえ · 友達 · 愛 · 山",
+  hangul:"안녕하세요 · 감사합니다 · 물 · 네 · 아니요 · 친구 · 사랑 · 산",
+  ru:"привет · спасибо · вода · да · нет · друг · любовь · мир",
+  uk:"привіт · дякую · вода · так · ні · друг · любов · світ",
+  bg:"здравей · благодаря · вода · да · не · приятел · любов · мир",
+  sr:"здраво · хвала · вода · да · не · пријатељ · љубав · мир",
+  kk:"сәлем · рақмет · су · иә · жоқ · дос · махаббат · әлем",
+  greek:"γεια · ευχαριστώ · νερό · ναι · όχι · φίλος · αγάπη · κόσμος",
+  hebrew:"שלום · תודה · מים · כן · לא · חבר · אהבה · עולם",
+  es:"hola · gracias · agua · sí · no · amigo · amor · mundo",
+  fr:"bonjour · merci · eau · oui · non · ami · amour · monde",
+  de:"hallo · danke · Wasser · ja · nein · Freund · Liebe · Welt",
+  pt:"olá · obrigado · água · sim · não · amigo · amor · mundo",
+  tr:"merhaba · teşekkür · su · evet · hayır · arkadaş · aşk · dünya",
+  pl:"cześć · dziękuję · woda · tak · nie · przyjaciel · miłość · świat",
+  cs:"ahoj · děkuji · voda · ano · ne · přítel · láska · svět",
+  ro:"salut · mulțumesc · apă · da · nu · prieten · iubire · lume",
+  hu:"szia · köszönöm · víz · igen · nem · barát · szerelem · világ",
+  dano:"hej · tak · vand · ja · nej · ven · kærlighed · hei · takk · vann",
+  swfi:"hej · tack · vatten · vän · hei · kiitos · vesi · kyllä · ystävä",
+  is:"halló · takk · vatn · já · nei · vinur · ást · heimur",
+  latin_viet:"xin chào · cảm ơn · nước · vâng · không · bạn · yêu",
+  latin_plain:"hello · thanks · water · yes · no · friend · love · world",
+  ar:"مرحبا · شكرا · ماء · نعم · لا · صديق · حب · عالم",
+  fa:"سلام · ممنون · آب · بله · نه · دوست · عشق · جهان",
+  ur:"سلام · شکریہ · پانی · ہاں · نہیں · دوست · محبت · دنیا",
+  ps:"سلام · مننه · اوبه · هو · نه · ملګری · مينه · نړۍ",
+  thaana:"ދިވެހި · ފެން · ރާއްޖެ",
+  devanagari:"नमस्ते · धन्यवाद · पानी · हाँ · नहीं · दोस्त · प्यार · दुनिया", bengali_lang:"নমস্কার · ধন্যবাদ · জল · হ্যাঁ · না · বন্ধু · ভালোবাসা",
+  assamese:"নমস্কাৰ · ধন্যবাদ · পানী · বন্ধু · ভাল",
+  gujarati:"નમસ્તે · આભાર · પાણી · હા · ના · મિત્ર · પ્રેમ · દુનિયા", gurmukhi:"ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ · ਮਿਹਰਬਾਨੀ · ਪਾਣੀ · ਹਾਂ · ਨਹੀਂ · ਦੋਸਤ",
+  tibetan:"བོད · ལྷ་ས · ཆུ",
+  thai:"สวัสดี · ขอบคุณ · น้ำ · ใช่ · ไม่ · เพื่อน · รัก · โลก", lao:"ສະບາຍດີ · ຂອບໃຈ · ນ້ຳ", khmer:"សួស្តី · អរគុណ · ទឹក",
+  burmese:"မင်္ဂလာပါ · ကျေးဇူး · ရေ",
+  telugu:"నమస్తే · ధన్యవాదాలు · నీరు · అవును · కాదు · స్నేహితుడు · ప్రేమ", kannada:"ನಮಸ್ತೆ · ಧನ್ಯವಾದ · ನೀರು · ಹೌದು · ಇಲ್ಲ · ಸ್ನೇಹಿತ · ಪ್ರೀತಿ",
+  telugu_kannada_both:"నమస్తే · ನಮಸ್ತೆ · నీరు", tamil:"வணக்கம் · நன்றி · தண்ணீர்",
+  malayalam:"നമസ്കാരം · നന്ദി · വെള്ളം · അതെ · ഇല്ല · സുഹൃത്ത് · സ്നേഹം", sinhala:"ආයුබෝවන් · ස්තූතියි · වතුර · ඔව් · නැහැ · යාළුවා",
+  odia:"ନମସ୍କାର · ଧନ୍ୟବାଦ · ପାଣି",
+  georgian:"გამარჯობა · მადლობა · წყალი · დიახ · არა · მეგობარი · სიყვარული", armenian:"բարև · շնորհակալություն · ջուր · այո · ոչ · ընկեր · սեր",
+  ethiopic:"ሰላም · አመሰግናለሁ · ውሃ · አዎ · ጓደኛ", mongolian:"ᠮᠣᠩᠭᠣᠯ · ᠤᠰᠤ · ᠰᠠᠶᠢᠨ"
+};
+
+/* ---------- engine ---------- */
+let path = ["start"];
+const app = document.getElementById("app");
+const isResult = id => !!K[id].result;
+const current = () => path[path.length-1];
+
+function navBar(){
+  return `<div class="nav">
+      ${path.length>1?'<button class="ghost" onclick="back()">&larr; Back</button>':'<span></span>'}
+      <button class="ghost" onclick="restart()">Restart</button>
+    </div>`;
+}
+
+/* representative multi-letter sample for options that lead to another question */
+const REP = {
+  cjk:"中 文 あ の 한 글", cgh:"Я Ж Σ Δ א ש", cyrillic:"Россия", arabic:"العربية",
+  chinese:"中文字", bengali:"বাংলা", latin:"Aa Bb Çç Ññ Éé", others:"अ ع ก த ሰ", rtl:"العربية",
+  topbar:"देवनागरी", round:"తెలుగు", se_asia:"ไทย", south:"తెలుగు", malsin:"മലയാളം",
+  telugu_kannada:"తెలుగు", caucasus:"ქართული"
+};
+function tileGlyph(o, node){
+  if(node && node.letterTiles) return o.og || "";
+  const t = K[o.go];
+  return t.result ? t.result.sample : (REP[o.go] || o.og || "");
+}
+
+/* nodes whose tiles name the answer — hide the name, show only the visual cue */
+const HIDE = {cjk:1, cgh:1, cyrillic:1, chinese:1, latin:1, arabic:1, bengali:1, se_asia:1};
+const NOTEXT = {latin:1};
+
+function render(){
+  const id = current();
+  document.querySelector('header').style.display = isResult(id) ? 'none' : '';
+  if(isResult(id)){ renderResult(id, K[id].result); return; }
+  const node = K[id];
+  const hide = HIDE[id];
+  const opts = node.options.map((o,i)=>{
+    const ot = NOTEXT[id] ? ""
+      : hide ? (o.oh?`<span class="oh">${o.oh}</span>`:"")
+      : `<span class="ol">${o.ol}</span>${o.oh?` &middot; <span class="oh">${o.oh}</span>`:""}`;
+    return `
+    <button class="opt" onclick="choose(${i})">
+      <span class="og${node.letterTiles?' solo':''}">${tileGlyph(o, node)}</span>
+      <span class="ot">${ot}</span>
+    </button>`;
+  }).join("");
+  app.innerHTML = `
+    ${node.q?`<div class="q">${node.q}</div>`:""}
+    <div class="opts${node.options.length===4?' two':node.options.length===5?' three':''}">${opts}</div>
+    ${navBar()}`;
+}
+
+const RTL = {hebrew:1, ar:1, fa:1, ur:1, ps:1, thaana:1};
+function renderResult(id, r){
+  const a = ALPHA[id];
+  const w = WORDS[id];
+  const d = RTL[id] ? ' dir="rtl"' : '';
+  app.innerHTML = `
+    <div class="r-head"><span class="r-name">${r.name}</span><span class="r-where">${r.langs.join(", ")}</span></div>
+    ${w?`<div class="r-words"${d}>${w}</div>`:""}
+    ${a?`<div class="alphabet"${d}>${a.g}</div>`:""}
+    <div class="r-feat">${r.tell}</div>
+    ${navBar()}`;
+}
+
+function choose(i){ path.push(K[current()].options[i].go); render(); }
+function back(){ if(path.length>1){ path.pop(); render(); } }
+function restart(){ path=["start"]; render(); }
+
+render();
+</script>
+</body>
+</html>
