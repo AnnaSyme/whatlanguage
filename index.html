@@ -354,8 +354,7 @@ const K = {
     ex:[{g:"తెలుగు",l:"Telugu"},{g:"ಕನ್ನಡ",l:"Kannada"}],
     options:[
       {ol:"Letters capped with a clear tick / check-mark on top", oh:"Rounder, softer, bubblier", og:"తె", go:"telugu"},
-      {ol:"A flatter top with a small loop/horn — no tick", oh:"A touch more angular and squarer", og:"ಕ", go:"kannada"},
-      {ol:"Honestly can't tell", oh:"They really are near-twins", og:"≈", go:"telugu_kannada_both"}
+      {ol:"A flatter top with a small loop/horn — no tick", oh:"A touch more angular and squarer", og:"ಕ", go:"kannada"}
     ]
   },
   telugu:{ result:{
@@ -371,13 +370,6 @@ const K = {
     tell:"Rounded South-Indian letters, but a shade more angular than Telugu, often with a small loop or horn at the top-right of letters.",
     sample:"ಕನ್ನಡ",
     confuse:"Telugu is the near-twin and genuinely hard to separate; Telugu is rounder with a clearer tick on top, Kannada slightly squarer."
-  }},
-  telugu_kannada_both:{ result:{
-    name:"Telugu or Kannada",
-    langs:["South India"],
-    tell:"Two sister scripts of South India — plump rounded letters capped with ticks. They're famously hard to tell apart at a glance.",
-    sample:"తెలుగు · ಕನ್ನಡ",
-    confuse:"Rule of thumb: Telugu is rounder with a clear check-mark on top; Kannada is slightly more angular with a top-right loop."
   }},
   odia:{ result:{
     name:"Odia (Oriya)",
@@ -491,7 +483,6 @@ const ALPHA = {
   burmese:{label:"Burmese consonants", g:"က ခ ဂ ဃ င စ ဆ ဇ ဈ ည ဋ ဌ ဍ ဎ ဏ တ ထ ဒ ဓ န ပ ဖ ဗ ဘ မ ယ ရ လ ဝ သ ဟ ဠ အ"},
   telugu:{label:"Telugu letters", g:"అ ఆ ఇ ఈ ఉ ఊ ఎ ఏ ఐ ఒ ఓ ఔ క ఖ గ ఘ చ ఛ జ ఝ ట ఠ డ ఢ ణ త థ ద ధ న ప ఫ బ భ మ య ర ల వ శ ష స హ"},
   kannada:{label:"Kannada letters", g:"ಅ ಆ ಇ ಈ ಉ ಊ ಎ ಏ ಐ ಒ ಓ ಔ ಕ ಖ ಗ ಘ ಚ ಛ ಜ ಝ ಟ ಠ ಡ ಢ ಣ ತ ಥ ದ ಧ ನ ಪ ಫ ಬ ಭ ಮ ಯ ರ ಲ ವ ಶ ಷ ಸ ಹ"},
-  telugu_kannada_both:{label:"Telugu letters (Kannada is the sister script)", g:"అ ఆ ఇ ఈ ఉ ఊ ఎ ఏ క ఖ గ ఘ చ జ ట డ త థ ద ధ న ప బ భ మ య ర ల వ స హ"},
   tamil:{label:"Tamil letters", g:"அ ஆ இ ஈ உ ஊ எ ஏ ஐ ஒ ஓ க ங ச ஞ ட ண த ந ப ம ய ர ல வ ழ ள ற ன"},
   malayalam:{label:"Malayalam letters", g:"അ ആ ഇ ഈ ഉ ഊ എ ഏ ഐ ഒ ഓ ക ഖ ഗ ഘ ങ ച ഛ ജ ഝ ഞ ട ഠ ഡ ഢ ണ ത ഥ ദ ധ ന പ ഫ ബ ഭ മ യ ര ല വ ശ ഷ സ ഹ"},
   sinhala:{label:"Sinhala letters", g:"අ ආ ඇ ඈ ඉ ඊ උ ඌ එ ඒ ක ඛ ග ඝ ඞ ච ඡ ජ ඣ ට ඨ ඩ ඪ ණ ත ථ ද ධ න ප ඵ බ භ ම ය ර ල ව ශ ෂ ස හ"},
@@ -541,7 +532,7 @@ const WORDS = {
   thai:"สวัสดี · ขอบคุณ · น้ำ · ใช่ · ไม่ · เพื่อน · รัก · โลก", lao:"ສະບາຍດີ · ຂອບໃຈ · ນ້ຳ", khmer:"សួស្តី · អរគុណ · ទឹក",
   burmese:"မင်္ဂလာပါ · ကျေးဇူး · ရေ",
   telugu:"నమస్తే · ధన్యవాదాలు · నీరు · అవును · కాదు · స్నేహితుడు · ప్రేమ", kannada:"ನಮಸ್ತೆ · ಧನ್ಯವಾದ · ನೀರು · ಹೌದು · ಇಲ್ಲ · ಸ್ನೇಹಿತ · ಪ್ರೀತಿ",
-  telugu_kannada_both:"నమస్తే · ನಮಸ್ತೆ · నీరు", tamil:"வணக்கம் · நன்றி · தண்ணீர்",
+  tamil:"வணக்கம் · நன்றி · தண்ணீர்",
   malayalam:"നമസ്കാരം · നന്ദി · വെള്ളം · അതെ · ഇല്ല · സുഹൃത്ത് · സ്നേഹം", sinhala:"ආයුබෝවන් · ස්තූතියි · වතුර · ඔව් · නැහැ · යාළුවා",
   odia:"ନମସ୍କାର · ଧନ୍ୟବାଦ · ପାଣି",
   georgian:"გამარჯობა · მადლობა · წყალი · დიახ · არა · მეგობარი · სიყვარული", armenian:"բարև · շնորհակալություն · ջուր · այո · ոչ · ընկեր · սեր",
